@@ -2537,24 +2537,62 @@ static HWND SearchChildren (const char* name, HWND hwnd, HWND startHwnd = NULL, 
 		}
 }
 
+#ifdef _WIN32
+
+typedef struct _SearchFloatingDockersEnumProcData
+{
+	const char* name;
+	const char* dockerName;
+	bool windowHasNoChildren;
+	HWND foundDocker;
+};
+
+static BOOL SearchFloatingDockersEnumProc(HWND docker, LPARAM userData)
+{
+	_SearchFloatingDockersEnumProcData* data = (_SearchFloatingDockersEnumProcData *)userData;
+
+	char wndName[2048];
+	GetWindowText(docker, wndName, sizeof(wndName));
+	if (!data->dockerName || !strcmp(wndName, data->dockerName)) {
+		HWND insideDocker = FindWindowEx(docker, NULL, NULL, "REAPER_dock");
+		while (insideDocker)
+		{
+			if (HWND w = SearchChildren(data->name, insideDocker, NULL, data->windowHasNoChildren))
+			{
+				data->foundDocker = w;
+				return false;
+			}
+			insideDocker = FindWindowEx(docker, insideDocker, NULL, "REAPER_dock");
+		}
+	}
+	return true;
+}
+#endif
+
 static HWND SearchFloatingDockers (const char* name, const char* dockerName, bool windowHasNoChildren = false)
 {
-	HWND docker = FindWindowEx(NULL, NULL, NULL, dockerName);
-	while (docker)
-	{
-		if (GetParent(docker) == g_hwndParent)
+	#ifdef _WIN32
+		_SearchFloatingDockersEnumProcData data = { 0 };
+		EnumThreadWindows(GetCurrentThreadId(), SearchFloatingDockersEnumProc, (LPARAM)&data);
+		return data.foundDocker;
+	#else
+		HWND docker = FindWindowEx(NULL, NULL, NULL, dockerName);
+		while (docker)
 		{
-			HWND insideDocker = FindWindowEx(docker, NULL, NULL, "REAPER_dock");
-			while (insideDocker)
+			if (GetParent(docker) == g_hwndParent)
 			{
-				if (HWND w = SearchChildren(name, insideDocker, NULL, windowHasNoChildren))
-					return w;
-				insideDocker = FindWindowEx(docker, insideDocker, NULL, "REAPER_dock");
+				HWND insideDocker = FindWindowEx(docker, NULL, NULL, "REAPER_dock");
+				while (insideDocker)
+				{
+					if (HWND w = SearchChildren(name, insideDocker, NULL, windowHasNoChildren))
+						return w;
+					insideDocker = FindWindowEx(docker, insideDocker, NULL, "REAPER_dock");
+				}
 			}
+			docker = FindWindowEx(NULL, docker, NULL, dockerName);
 		}
-		docker = FindWindowEx(NULL, docker, NULL, dockerName);
-	}
-	return NULL;
+		return NULL;
+	#endif
 }
 
 static HWND FindInFloatingDockers (const char* name, bool windowHasNoChildren = false)
