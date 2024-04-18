@@ -2539,30 +2539,24 @@ static HWND SearchChildren (const char* name, HWND hwnd, HWND startHwnd = NULL, 
 
 #ifdef _WIN32
 
-typedef struct _SearchFloatingDockersEnumProcData
+ struct SearchFloatingDockersEnumProcData
 {
 	const char* name;
-	const char* dockerName;
 	bool windowHasNoChildren;
-	HWND foundDocker;
+	HWND foundDocker; // output
 };
 
 static BOOL SearchFloatingDockersEnumProc(HWND docker, LPARAM userData)
 {
-	_SearchFloatingDockersEnumProcData* data = (_SearchFloatingDockersEnumProcData *)userData;
+	auto data = reinterpret_cast<SearchFloatingDockersEnumProcData *>(userData);
 
-	char wndName[2048];
-	GetWindowText(docker, wndName, sizeof(wndName));
-	if (!data->dockerName || !strcmp(wndName, data->dockerName)) {
-		HWND insideDocker = FindWindowEx(docker, NULL, NULL, "REAPER_dock");
-		while (insideDocker)
+	HWND insideDocker = NULL;
+	while ((insideDocker = FindWindowEx(docker, insideDocker, NULL, "REAPER_dock")))
+	{
+		if (HWND w = SearchChildren(data->name, insideDocker, NULL, data->windowHasNoChildren))
 		{
-			if (HWND w = SearchChildren(data->name, insideDocker, NULL, data->windowHasNoChildren))
-			{
-				data->foundDocker = w;
-				return false;
-			}
-			insideDocker = FindWindowEx(docker, insideDocker, NULL, "REAPER_dock");
+			data->foundDocker = w;
+			return false;
 		}
 	}
 	return true;
@@ -2572,7 +2566,7 @@ static BOOL SearchFloatingDockersEnumProc(HWND docker, LPARAM userData)
 static HWND SearchFloatingDockers (const char* name, const char* dockerName, bool windowHasNoChildren = false)
 {
 	#ifdef _WIN32
-		_SearchFloatingDockersEnumProcData data = { 0 };
+		SearchFloatingDockersEnumProcData data { name, windowHasNoChildren };
 		EnumThreadWindows(GetCurrentThreadId(), SearchFloatingDockersEnumProc, (LPARAM)&data);
 		return data.foundDocker;
 	#else
